@@ -19,7 +19,6 @@ Usage:
         --flair ./sample/t2f.nii.gz \
         --mode all
 
-    python analyze.py --dataset_root ./merged_dataset --model ./epoch_004.pt --t1 .\merged_dataset\glioma_brats2023\BraTS2023-GLI-TrainingData\BraTS-GLI-00000-000\BraTS-GLI-00000-000-t1n.nii.gz --t1ce .\merged_dataset\glioma_brats2023\BraTS2023-GLI-TrainingData\BraTS-GLI-00000-000\BraTS-GLI-00000-000-t1c.nii.gz --t2 .\merged_dataset\glioma_brats2023\BraTS2023-GLI-TrainingData\BraTS-GLI-00000-000\BraTS-GLI-00000-000-t2w.nii.gz --flair .\merged_dataset\glioma_brats2023\BraTS2023-GLI-TrainingData\BraTS-GLI-00000-000\BraTS-GLI-00000-000-t2f.nii.gz --mode all
 """
 
 import argparse
@@ -31,7 +30,7 @@ warnings.filterwarnings("ignore")
 
 import numpy as np
 import matplotlib
-matplotlib.use("Agg")          # non-interactive backend — safe on any machine
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.colors import LinearSegmentedColormap
@@ -41,9 +40,6 @@ import torch
 import torch.nn as nn
 import nibabel as nib
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STYLE
-# ─────────────────────────────────────────────────────────────────────────────
 PALETTE = {
     "bg":       "#0D1117",
     "surface":  "#161B22",
@@ -82,9 +78,7 @@ TUMOR_CMAP = LinearSegmentedColormap.from_list(
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MODEL DEFINITION  (must match predict.py exactly)
-# ─────────────────────────────────────────────────────────────────────────────
+# MODEL
 
 def center_crop(tensor, target_shape):
     _, _, d, h, w = tensor.shape
@@ -139,11 +133,6 @@ class AttentionUNet3D(nn.Module):
         x  = self.u3(x, x2);  x = self.u4(x, x1)
         return self.outc(x)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-
 def load_nifti(path):
     nii = nib.load(path)
     return nii.get_fdata().astype(np.float32), nii.affine, nii.header
@@ -163,11 +152,6 @@ def title_box(ax, text):
     ax.set_title(text, pad=8, fontsize=12,
                  bbox=dict(facecolor=PALETTE["border"], edgecolor="none",
                            boxstyle="round,pad=0.3", alpha=0.8))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. MODEL ANALYSIS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def count_parameters(model):
     total   = sum(p.numel() for p in model.parameters())
@@ -191,7 +175,6 @@ def plot_model_architecture(model, save_path="fig_model_architecture.png"):
     """
     device = next(model.parameters()).device
 
-    # ── collect per-block params ──────────────────────────────────────────
     blocks = {
         "Encoder\nBlock 0 (inc)": model.inc,
         "Encoder\nBlock 1 (d1)": model.d1,
@@ -215,7 +198,7 @@ def plot_model_architecture(model, save_path="fig_model_architecture.png"):
         [PALETTE["accent4"]]
     )
 
-    # ── layer type counts ─────────────────────────────────────────────────
+    # layer type counts
     type_counts = {}
     for _, m in model.named_modules():
         t = type(m).__name__
@@ -227,7 +210,6 @@ def plot_model_architecture(model, save_path="fig_model_architecture.png"):
     fig.suptitle("AttentionUNet3D — Model Architecture Analysis",
                  fontsize=15, fontweight="bold", y=1.01)
 
-    # ── left: bar chart ───────────────────────────────────────────────────
     ax = axes[0]
     y_pos = np.arange(len(labels))
     bars = ax.barh(y_pos, counts, color=colors, height=0.6,
@@ -257,7 +239,6 @@ def plot_model_architecture(model, save_path="fig_model_architecture.png"):
     ax.legend(handles=legend_items, loc="lower right",
               framealpha=0.3, fontsize=9)
 
-    # ── right: donut chart ────────────────────────────────────────────────
     ax2 = axes[1]
     donut_labels = list(type_counts.keys())
     donut_vals   = list(type_counts.values())
@@ -278,7 +259,7 @@ def plot_model_architecture(model, save_path="fig_model_architecture.png"):
                framealpha=0.2)
     title_box(ax2, "Layer Type Distribution")
 
-    # ── total params annotation ───────────────────────────────────────────
+    # total params annotation
     total, trainable = count_parameters(model)
     fig.text(0.5, -0.03,
              f"Total parameters: {total:,}  |  Trainable: {trainable:,}  "
@@ -288,7 +269,7 @@ def plot_model_architecture(model, save_path="fig_model_architecture.png"):
     plt.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
-    print(f"  ✓ Saved: {save_path}")
+    print(f" Saved: {save_path}")
     return total, trainable
 
 
@@ -343,16 +324,13 @@ def plot_model_summary_table(model, save_path="fig_model_summary_table.png"):
     plt.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
-    print(f"  ✓ Saved: {save_path}")
+    print(f" Saved: {save_path}")
 
 
 def plot_receptive_field(save_path="fig_receptive_field.png"):
     """
     Analytically computes the theoretical receptive field at each encoder depth.
     """
-    # Each DoubleConv = 2× Conv3d(k=3,pad=1)  → RF grows by 2*(k-1)=4 per block
-    # Each MaxPool3d(2) multiplies the stride — RF grows multiplicatively
-    depths    = [0,     1,     2,      3,       4]
     labels_d  = ["Depth 0\n(inc)", "Depth 1\n(d1)", "Depth 2\n(d2)",
                  "Depth 3\n(d3)", "Depth 4\n(bottleneck)"]
     strides   = [1, 2, 4, 8, 16]          # after MaxPool cascades
@@ -379,7 +357,7 @@ def plot_receptive_field(save_path="fig_receptive_field.png"):
     ax.grid(axis="y", alpha=0.4); ax.set_axisbelow(True)
     title_box(ax, "RF vs Encoder Depth")
 
-    # line + feature map size (assume 240×240×155 ≈ padded to 240×240×160)
+    # line + feature map size
     ax2 = axes[1]
     INPUT = np.array([240, 240, 160])
     fm_sizes = [INPUT // s for s in strides]
@@ -402,7 +380,7 @@ def plot_receptive_field(save_path="fig_receptive_field.png"):
     plt.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
-    print(f"  ✓ Saved: {save_path}")
+    print(f" Saved: {save_path}")
 
 
 def plot_channel_progression(save_path="fig_channel_progression.png"):
@@ -446,13 +424,11 @@ def plot_channel_progression(save_path="fig_channel_progression.png"):
     plt.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
-    print(f"  ✓ Saved: {save_path}")
+    print(f" Saved: {save_path}")
 
 
 def model_analysis(model_path):
-    print("\n══════════════════════════════════════════")
     print("  MODEL ANALYSIS")
-    print("══════════════════════════════════════════")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model  = AttentionUNet3D().to(device)
@@ -491,7 +467,7 @@ def model_analysis(model_path):
     with torch.no_grad():
         for _ in range(REPS): model(x)
     elapsed = (time.time()-t0)/REPS*1000
-    print(f"  Inference (32³)    : {elapsed:.1f} ms  (avg over {REPS} runs, {device})")
+    print(f" Inference (32³): {elapsed:.1f} ms  (avg over {REPS} runs, {device})")
 
     plot_model_architecture(model)
     plot_model_summary_table(model)
@@ -501,9 +477,7 @@ def model_analysis(model_path):
     return model
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. DATASET ANALYSIS
-# ─────────────────────────────────────────────────────────────────────────────
+# DATASET ANALYSIS
 
 MODALITIES = {
     "t1n": ("T1",     PALETTE["accent1"]),
@@ -523,10 +497,9 @@ def discover_cases(dataset_root):
     for path in sorted(glob.glob(os.path.join(dataset_root, "**", "*.nii.gz"),
                                   recursive=True)):
         basename = os.path.basename(path)
-        # try to identify modality from filename
+        # identify modality from filename
         for suffix in list(MODALITIES.keys()) + [SEG_SUFFIX]:
             if f"-{suffix}." in basename or f"_{suffix}." in basename:
-                # case id = directory name
                 case_id = os.path.basename(os.path.dirname(path))
                 if case_id not in cases:
                     cases[case_id] = {}
@@ -547,7 +520,7 @@ def collect_stats(cases, max_cases=200):
     seg_present = 0
 
     sampled = cases[:max_cases]
-    print(f"  Collecting stats from {len(sampled)} / {len(cases)} cases …")
+    print(f" Collecting stats from {len(sampled)} / {len(cases)} cases …")
 
     for case in sampled:
         # shape from first available modality
@@ -583,7 +556,7 @@ def plot_dataset_overview(cases, stats, shapes, seg_vols, seg_present,
                           save_path="fig_dataset_overview.png"):
     """4-panel figure: case count, shape distribution, seg presence, modality coverage."""
 
-    # ── counts ───────────────────────────────────────────────────────────
+    # counts
     mod_present = {k: sum(1 for c in cases if k in c) for k in MODALITIES}
     n_with_seg  = sum(1 for c in cases if SEG_SUFFIX in c)
 
@@ -591,7 +564,7 @@ def plot_dataset_overview(cases, stats, shapes, seg_vols, seg_present,
     gs  = gridspec.GridSpec(2, 3, figure=fig, hspace=0.45, wspace=0.4)
     fig.suptitle("BraTS Dataset — Overview Statistics", fontsize=15, fontweight="bold")
 
-    # ── panel 1: modality coverage bar ───────────────────────────────────
+    # panel 1: modality coverage bar
     ax1 = fig.add_subplot(gs[0, 0])
     names  = [MODALITIES[k][0] for k in MODALITIES] + ["Seg"]
     counts = [mod_present[k]   for k in MODALITIES] + [n_with_seg]
@@ -608,7 +581,7 @@ def plot_dataset_overview(cases, stats, shapes, seg_vols, seg_present,
     ax1.grid(axis="y", alpha=0.4); ax1.set_axisbelow(True)
     title_box(ax1, "Modality & Segmentation Coverage")
 
-    # ── panel 2: spatial shape ───────────────────────────────────────────
+    # panel 2: spatial shape
     ax2 = fig.add_subplot(gs[0, 1])
     if shapes:
         dims = np.array(shapes)
@@ -628,7 +601,7 @@ def plot_dataset_overview(cases, stats, shapes, seg_vols, seg_present,
         ax2.grid(axis="y", alpha=0.4); ax2.set_axisbelow(True)
     title_box(ax2, "Volume Shape Distribution")
 
-    # ── panel 3: tumour voxel volume histogram ───────────────────────────
+    # panel 3: tumour voxel volume histogram
     ax3 = fig.add_subplot(gs[0, 2])
     if seg_vols:
         nz = [v for v in seg_vols if v > 0]
@@ -649,7 +622,7 @@ def plot_dataset_overview(cases, stats, shapes, seg_vols, seg_present,
                  color=PALETTE["subtext"], fontsize=11)
         title_box(ax3, "Tumour Volume Distribution")
 
-    # ── panel 4: per-modality mean intensity box ──────────────────────────
+    # panel 4: per-modality mean intensity box
     ax4 = fig.add_subplot(gs[1, :2])
     plot_data  = []
     plot_labels = []
@@ -674,7 +647,7 @@ def plot_dataset_overview(cases, stats, shapes, seg_vols, seg_present,
         ax4.grid(axis="y", alpha=0.4); ax4.set_axisbelow(True)
     title_box(ax4, "Per-Modality Intensity Distribution (sampled cases)")
 
-    # ── panel 5: std distribution ─────────────────────────────────────────
+    # panel 5: std distribution
     ax5 = fig.add_subplot(gs[1, 2])
     for k in MODALITIES:
         if stats[k]["std"]:
@@ -729,7 +702,7 @@ def plot_intensity_histograms(cases, save_path="fig_intensity_histograms.png",
     plt.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
-    print(f"  ✓ Saved: {save_path}")
+    print(f" Saved: {save_path}")
 
 
 def plot_slice_montage(cases, save_path="fig_slice_montage.png", n_cases=6):
@@ -741,7 +714,7 @@ def plot_slice_montage(cases, save_path="fig_slice_montage.png", n_cases=6):
                 if all(k in c for k in MODALITIES)
                 and SEG_SUFFIX in c]
     if not complete:
-        print("  ⚠  No complete cases (all modalities + seg) — skipping montage.")
+        print(" No complete cases (all modalities + seg) — skipping montage.")
         return
     random.seed(42)
     sampled = random.sample(complete, min(n_cases, len(complete)))
@@ -796,18 +769,16 @@ def plot_slice_montage(cases, save_path="fig_slice_montage.png", n_cases=6):
     plt.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
-    print(f"  ✓ Saved: {save_path}")
+    print(f" Saved: {save_path}")
 
 
 def dataset_analysis(dataset_root):
-    print("\n══════════════════════════════════════════")
-    print("  DATASET ANALYSIS")
-    print("══════════════════════════════════════════")
+    print("DATASET ANALYSIS")
 
     cases = discover_cases(dataset_root)
     print(f"  Cases discovered : {len(cases)}")
     if not cases:
-        print("  ⚠  No .nii.gz files found — check --dataset_root path.")
+        print(" No .nii.gz files found — check --dataset_root path.")
         return
 
     stats, shapes, seg_vols, seg_present = collect_stats(cases)
@@ -830,9 +801,7 @@ def dataset_analysis(dataset_root):
     plot_slice_montage(cases)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. INFERENCE VISUALISATION
-# ─────────────────────────────────────────────────────────────────────────────
+# INFERENCE VISUALISATION
 
 def plot_inference_result(t1_path, t1ce_path, t2_path, flair_path,
                           model, save_path="fig_inference_result.png"):
@@ -879,12 +848,7 @@ def plot_inference_result(t1_path, t1ce_path, t2_path, flair_path,
     else:
         slice_idxs = [d//4, d//2, 3*d//4]
 
-    mods = {"T1": t1, "T1ce": t1ce, "T2": t2, "FLAIR": flair}
-    mod_colors = [PALETTE["accent1"], PALETTE["accent2"],
-                  PALETTE["accent3"], PALETTE["accent4"]]
-
     n_rows = 3
-    n_cols = len(slice_idxs) * 2  # modalities + overlay
 
     fig = plt.figure(figsize=(18, 11))
     fig.suptitle("Inference Result — BraTS Patient",
@@ -938,16 +902,13 @@ def plot_inference_result(t1_path, t1ce_path, t2_path, flair_path,
 
     plt.savefig(save_path)
     plt.close(fig)
-    print(f"  ✓ Saved: {save_path}")
-    print(f"  Tumour voxels: {n_tumor:,}   Confidence: {conf:.4f}")
+    print(f" Saved: {save_path}")
+    print(f" Tumour voxels: {n_tumor:,}   Confidence: {conf:.4f}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    import matplotlib.ticker  # ensure imported for formatters used above
     global matplotlib
 
     parser = argparse.ArgumentParser(
@@ -966,11 +927,7 @@ def main():
     parser.add_argument("--flair", help="FLAIR .nii.gz for inference")
     args = parser.parse_args()
 
-    import matplotlib.ticker   # noqa – make sure module-level ref works
-
-    print("\n╔══════════════════════════════════════════════════════╗")
-    print("║  BraTS / AttentionUNet3D  —  Research Analysis Tool  ║")
-    print("╚══════════════════════════════════════════════════════╝")
+    print("AttentionUNet3D  —  Research Analysis Tool")
 
     loaded_model = None
 
@@ -978,8 +935,8 @@ def main():
         if os.path.isfile(args.model):
             loaded_model = model_analysis(args.model)
         else:
-            print(f"\n  ⚠  Model file not found: {args.model}")
-            print("      Running architecture-only analysis …")
+            print(f"\n Model file not found: {args.model}")
+            print(" Running architecture-only analysis …")
             loaded_model = AttentionUNet3D()
             plot_model_architecture(loaded_model)
             plot_model_summary_table(loaded_model)
@@ -990,22 +947,20 @@ def main():
         if os.path.isdir(args.dataset_root):
             dataset_analysis(args.dataset_root)
         else:
-            print(f"\n  ⚠  Dataset root not found: {args.dataset_root}")
+            print(f"\n Dataset root not found: {args.dataset_root}")
 
     if args.mode in ("inference", "all"):
         if all([args.t1, args.t1ce, args.t2, args.flair]):
             if loaded_model is None:
                 loaded_model = AttentionUNet3D()
-            print("\n══════════════════════════════════════════")
             print("  INFERENCE VISUALISATION")
-            print("══════════════════════════════════════════")
             plot_inference_result(
                 args.t1, args.t1ce, args.t2, args.flair, loaded_model
             )
         elif args.mode == "inference":
-            print("  ⚠  --t1 / --t1ce / --t2 / --flair required for inference mode.")
+            print(" --t1 / --t1ce / --t2 / --flair required for inference mode.")
 
-    print("\n  ✅  All figures saved to current directory.")
+    print("\n All figures saved to current directory.")
     print("  Files produced:")
     for f in sorted(glob.glob("fig_*.png")):
         sz = os.path.getsize(f) / 1024

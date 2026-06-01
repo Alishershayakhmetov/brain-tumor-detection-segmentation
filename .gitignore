@@ -4,5 +4,8 @@
 /debug
 /analysis
 final_merged_dataset_v2.csv
+final_merged_dataset_v3_rebuilt.csv
 .env
 /src
+/test_models
+/results_xai
